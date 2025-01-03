@@ -7,7 +7,7 @@ from tkinter.simpledialog import askstring
 def selecionar_arquivo(nome_arquivo):
     root = tk.Tk()
     root.withdraw()
-    arquivo = filedialog.askopenfilename(title=f"Selecione o arquivo {nome_arquivo}", filetypes=[("CSV Files", "*.csv")])
+    arquivo = filedialog.askopenfilename(title=f"Selecione o arquivo {nome_arquivo}")
     return arquivo
 
 # Função para pedir o mês e o ano
@@ -29,13 +29,12 @@ def carregar_arquivos():
     arquivo1 = selecionar_arquivo("Saída com Chave de Acesso")
     arquivo2 = selecionar_arquivo("ICMS Monofásico")
 
-    # Carregar os arquivos CSV com os delimitadores apropriados
-    df1 = pd.read_csv(arquivo1, delimiter=',', encoding='ISO-8859-1')
-    df2 = pd.read_csv(arquivo2, delimiter=';', encoding='ISO-8859-1')
+    # Carregar os arquivos corretamente
+    df1 = pd.read_excel(arquivo1, engine="xlrd")  # Arquivo Excel (.xls)
+    df2 = pd.read_csv(arquivo2, delimiter=";", encoding="ISO-8859-1")  # Arquivo CSV delimitado por ponto e vírgula
 
     return df1, df2
 
-# Processar os dados
 def processar_dados(df1, df2, mes_ano):
     # Ordenar os DataFrames
     if "Número" in df1.columns:
@@ -43,23 +42,30 @@ def processar_dados(df1, df2, mes_ano):
     if "Número Lançamento" in df2.columns:
         df2 = df2.sort_values(by=["Número Lançamento"])
 
-    # Limpar separadores de milhares e ajustar colunas numéricas
-    df1["Quantidade"] = (
-        df1["Quantidade"]
-        .str.replace(".", "", regex=False)
-        .str.replace(",", ".", regex=False)
-        .astype(float)
-    )
-    df2["ALIQADREMICMSRETIDAANT"] = (
-        df2["ALIQADREMICMSRETIDAANT"]
-        .str.replace(".", "", regex=False)
-        .str.replace(",", ".", regex=False)
-        .astype(float)
-    )
+    # Garantir que as colunas sejam strings antes de usar .str.replace
+    if "Quantidade" in df1.columns:
+        df1["Quantidade"] = (
+            df1["Quantidade"]
+            .astype(str)  # Converter para string
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .astype(float)  # Converter de volta para float
+        )
+
+    if "ALIQADREMICMSRETIDAANT" in df2.columns:
+        df2["ALIQADREMICMSRETIDAANT"] = (
+            df2["ALIQADREMICMSRETIDAANT"]
+            .astype(str)  # Converter para string
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .astype(float)  # Converter de volta para float
+        )
 
     # Tratar valores inconsistentes na coluna de datas
-    df1["Data Emissão"] = pd.to_datetime(df1["Data Emissão"], format='%d/%m/%Y', errors='coerce')
-    df2["DATALCTOFIS"] = pd.to_datetime(df2["DATALCTOFIS"], format='%d/%m/%Y', errors='coerce')
+    if "Data Emissão" in df1.columns:
+        df1["Data Emissão"] = pd.to_datetime(df1["Data Emissão"], format='%d/%m/%Y', errors='coerce')
+    if "DATALCTOFIS" in df2.columns:
+        df2["DATALCTOFIS"] = pd.to_datetime(df2["DATALCTOFIS"], format='%d/%m/%Y', errors='coerce')
 
     # Remover linhas com valores inválidos de data
     df1 = df1.dropna(subset=["Data Emissão"])
@@ -81,7 +87,10 @@ def processar_dados(df1, df2, mes_ano):
     resultado["Quant. Total"] = df1_filtrado["Quantidade"]
 
     # Adicionar a coluna Aliq. com base no segundo arquivo
-    resultado["Aliq."] = df2_filtrado["ALIQADREMICMSRETIDAANT"].values
+    if not df2_filtrado.empty and "ALIQADREMICMSRETIDAANT" in df2_filtrado.columns:
+        resultado["Aliq."] = df2_filtrado["ALIQADREMICMSRETIDAANT"].values[:len(resultado)]
+    else:
+        resultado["Aliq."] = 0  # Valor padrão caso df2_filtrado esteja vazio
 
     # Calcular as colunas Aliq. Quant. 86% e Aliq. Quant. 14%
     resultado["Aliq. Quant. 86%"] = resultado["Quant. Total"] * 0.86 * resultado["Aliq."]
