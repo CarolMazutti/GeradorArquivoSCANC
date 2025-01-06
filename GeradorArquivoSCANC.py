@@ -1,114 +1,91 @@
 import pandas as pd
-import tkinter as tk
-from tkinter import filedialog
-from tkinter.simpledialog import askstring
+from tkinter import Tk, filedialog, simpledialog, messagebox
+import os
 
-# Função para selecionar arquivo
-def selecionar_arquivo(nome_arquivo):
-    root = tk.Tk()
-    root.withdraw()
-    arquivo = filedialog.askopenfilename(title=f"Selecione o arquivo {nome_arquivo}")
-    return arquivo
-
-# Função para pedir o mês e o ano
-def pedir_mes_ano():
-    root = tk.Tk()
-    root.withdraw()
-    mes_ano = askstring("Mês e Ano", "Informe o mês e ano (MM/YYYY):")
-    return mes_ano
-
-# Função para salvar o arquivo
-def salvar_arquivo():
-    root = tk.Tk()
-    root.withdraw()
-    arquivo_salvar = filedialog.asksaveasfilename(defaultextension=".ods", filetypes=[("ODS files", "*.ods")])
-    return arquivo_salvar
-
-# Função para carregar os arquivos
-def carregar_arquivos():
-    arquivo1 = selecionar_arquivo("Saída com Chave de Acesso")
-    arquivo2 = selecionar_arquivo("ICMS Monofásico")
-
-    # Carregar os arquivos corretamente
-    df1 = pd.read_excel(arquivo1, engine="xlrd")  # Arquivo Excel (.xls)
-    df2 = pd.read_csv(arquivo2, delimiter=";", encoding="ISO-8859-1")  # Arquivo CSV delimitado por ponto e vírgula
-
-    return df1, df2
-
-def processar_dados(df1, df2, mes_ano):
-    # Ordenar os DataFrames
-    if "Número" in df1.columns:
-        df1 = df1.sort_values(by=["Número"])
-    if "Número Lançamento" in df2.columns:
-        df2 = df2.sort_values(by=["Número Lançamento"])
-
-    # Garantir que as colunas sejam strings antes de usar .str.replace
-    if "Quantidade" in df1.columns:
-        df1["Quantidade"] = (
-            df1["Quantidade"]
-            .astype(str)  # Converter para string
-            .str.replace(".", "", regex=False)
-            .str.replace(",", ".", regex=False)
-            .astype(float)  # Converter de volta para float
-        )
-
-    if "ALIQADREMICMSRETIDAANT" in df2.columns:
-        df2["ALIQADREMICMSRETIDAANT"] = (
-            df2["ALIQADREMICMSRETIDAANT"]
-            .astype(str)  # Converter para string
-            .str.replace(".", "", regex=False)
-            .str.replace(",", ".", regex=False)
-            .astype(float)  # Converter de volta para float
-        )
-
-    # Tratar valores inconsistentes na coluna de datas
-    if "Data Emissão" in df1.columns:
-        df1["Data Emissão"] = pd.to_datetime(df1["Data Emissão"], format='%d/%m/%Y', errors='coerce')
-    if "DATALCTOFIS" in df2.columns:
-        df2["DATALCTOFIS"] = pd.to_datetime(df2["DATALCTOFIS"], format='%d/%m/%Y', errors='coerce')
-
-    # Remover linhas com valores inválidos de data
-    df1 = df1.dropna(subset=["Data Emissão"])
-    df2 = df2.dropna(subset=["DATALCTOFIS"])
-
-    # Filtrar por mês e ano
-    mes, ano = map(int, mes_ano.split("/"))
-    df1_filtrado = df1[(df1["Data Emissão"].dt.month == mes) & (df1["Data Emissão"].dt.year == ano)]
-    df2_filtrado = df2[(df2["DATALCTOFIS"].dt.month == mes) & (df2["DATALCTOFIS"].dt.year == ano)]
-
-    # Criar o DataFrame final
-    resultado = pd.DataFrame()
-    resultado["Apuração"] = mes_ano
-    resultado["Data Emissão"] = df1_filtrado["Data Emissão"].dt.strftime('%d/%m/%Y')
-    resultado["Número"] = df1_filtrado["Número"]
-    resultado["Natureza"] = df1_filtrado["Natureza"]
-    resultado["Razão Social"] = df1_filtrado["Razão Social"]
-    resultado["Produto"] = df1_filtrado["Produto"]
-    resultado["Quant. Total"] = df1_filtrado["Quantidade"]
-
-    # Adicionar a coluna Aliq. com base no segundo arquivo
-    if not df2_filtrado.empty and "ALIQADREMICMSRETIDAANT" in df2_filtrado.columns:
-        resultado["Aliq."] = df2_filtrado["ALIQADREMICMSRETIDAANT"].values[:len(resultado)]
-    else:
-        resultado["Aliq."] = 0  # Valor padrão caso df2_filtrado esteja vazio
-
-    # Calcular as colunas Aliq. Quant. 86% e Aliq. Quant. 14%
-    resultado["Aliq. Quant. 86%"] = resultado["Quant. Total"] * 0.86 * resultado["Aliq."]
-    resultado["Aliq. Quant. 14%"] = resultado["Quant. Total"] * 0.14 * resultado["Aliq."]
-
-    return resultado
-
-# Função principal
 def main():
-    df1, df2 = carregar_arquivos()
-    mes_ano = pedir_mes_ano()
-    resultado = processar_dados(df1, df2, mes_ano)
-    arquivo_salvar = salvar_arquivo()
+    # Ocultar a janela principal do Tkinter
+    root = Tk()
+    root.withdraw()
 
-    # Salvar o resultado em um arquivo ODS
-    resultado.to_excel(arquivo_salvar, index=False, engine="odf")
-    print(f"Arquivo gerado com sucesso: {arquivo_salvar}")
+    # Solicitar ao usuário os dois arquivos
+    messagebox.showinfo("Seleção de Arquivo", "Selecione o arquivo Saída com Chave de Acesso (planilha Excel).")
+    saida_chave_path = filedialog.askopenfilename(
+        title="Selecione o arquivo Saída com Chave de Acesso",
+        filetypes=[("Arquivos Excel", "*.xls *.xlsx")]
+    )
+    
+    messagebox.showinfo("Seleção de Arquivo", "Selecione o arquivo ICMS Monofásico (arquivo CSV).")
+    icms_mono_path = filedialog.askopenfilename(
+        title="Selecione o arquivo ICMS Monofásico",
+        filetypes=[("Arquivos CSV", "*.csv")]
+    )
 
-# Executar o script
+    if not saida_chave_path or not icms_mono_path:
+        messagebox.showerror("Erro", "Você deve selecionar ambos os arquivos.")
+        return
+
+    # Solicitar ao usuário o mês e ano
+    mes = simpledialog.askinteger("Entrada", "Informe o mês (1-12):")
+    ano = simpledialog.askinteger("Entrada", "Informe o ano (ex: 2023):")
+    
+    if not mes or not ano:
+        messagebox.showerror("Erro", "Você deve informar o mês e o ano.")
+        return
+
+    # Carregar os arquivos
+    saida_chave = pd.read_excel(saida_chave_path)
+    icms_mono = pd.read_csv(icms_mono_path, delimiter=';', encoding='latin-1')
+
+    print(icms_mono.head())  # Exibe as primeiras linhas do DataFrame
+    print(icms_mono.columns)  # Exibe os nomes das colunas para verificar posições e nomes
+
+    # Ordenar os dados
+    saida_chave.sort_values(by=saida_chave.columns[1], inplace=True)  # Ordenar pela 2ª coluna (Número)
+    icms_mono.sort_values(by=icms_mono.columns[0], inplace=True)  # Ordenar pela 1ª coluna (Número Lançamento)
+
+    # Filtrar dados pelo mês e ano
+    saida_chave['Data'] = pd.to_datetime(saida_chave.iloc[:, 5], errors='coerce')  # Coluna 6 para datetime
+    icms_mono['Data'] = pd.to_datetime(icms_mono.iloc[:, 2], errors='coerce')  # Coluna 3 para datetime
+
+    saida_chave = saida_chave[(saida_chave['Data'].dt.month == mes) & (saida_chave['Data'].dt.year == ano)]
+    icms_mono = icms_mono[(icms_mono['Data'].dt.month == mes) & (icms_mono['Data'].dt.year == ano)]
+
+    # Montar o DataFrame final
+    resultado = pd.DataFrame()
+    resultado['Apuração'] = f"{mes:02d}/{ano}"  # Mês e ano
+    resultado['Data Emissão'] = saida_chave['Data'].dt.strftime('%d/%m/%Y')  # Data formatada
+    resultado['Número'] = saida_chave.iloc[:, 1]  # Número
+    resultado['Natureza'] = saida_chave.iloc[:, 6]  # Natureza
+    resultado['Razão Social'] = saida_chave.iloc[:, 9]  # Razão Social
+
+    # Inscrição Produtor (coluna 19 ou 20)
+    inscricao_produtor = saida_chave.iloc[:, 18].fillna(saida_chave.iloc[:, 19])
+    resultado['Inscrição Produtor'] = inscricao_produtor
+
+    resultado['Produto'] = saida_chave.iloc[:, 7]  # Produto
+    resultado['Quant. Total'] = saida_chave.iloc[:, 9]  # Quant. Total
+
+    # Adicionar Aliq (coluna 22 do ICMS Monofásico)
+    resultado['Aliq.'] = icms_mono.iloc[:, 21].values  # Aliq.
+
+    # Colunas calculadas
+    resultado['Quant. 86%'] = resultado['Quant. Total'] * 0.86
+    resultado['Aliq. Quant. 86%'] = resultado['Quant. 86%'] * resultado['Aliq.']
+    resultado['Quant. 14%'] = resultado['Quant. Total'] * 0.14
+    resultado['Aliq. Quant. 14%'] = resultado['Quant. 14%'] * resultado['Aliq.']
+
+    # Solicitar o local e nome para salvar o arquivo
+    save_path = filedialog.asksaveasfilename(
+        title="Salvar arquivo",
+        defaultextension=".xlsx",
+        filetypes=[("Arquivo Excel", "*.xlsx")]
+    )
+
+    if save_path:
+        resultado.to_excel(save_path, index=False, engine='openpyxl')
+        messagebox.showinfo("Sucesso", f"Arquivo salvo com sucesso em: {save_path}")
+    else:
+        messagebox.showwarning("Cancelado", "Operação cancelada pelo usuário.")
+
 if __name__ == "__main__":
     main()
