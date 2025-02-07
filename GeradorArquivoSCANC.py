@@ -2,6 +2,11 @@ import pandas as pd
 from tkinter import Tk, filedialog, simpledialog, messagebox
 import os
 
+# pd.set_option('display.max_columns', None)  # Exibe todas as colunas
+# pd.set_option('display.width', None)  # Ajusta a largura da saída ao tamanho da tela
+
+resultado = pd.DataFrame()  # Inicializar antes do processamento
+
 def main():
     # Ocultar a janela principal do Tkinter
     root = Tk()
@@ -36,8 +41,25 @@ def main():
     saida_chave = pd.read_excel(saida_chave_path)
     icms_mono = pd.read_csv(icms_mono_path, delimiter=';', encoding='latin-1')
 
-    print(icms_mono.head())  # Exibe as primeiras linhas do DataFrame
-    print(icms_mono.columns)  # Exibe os nomes das colunas para verificar posições e nomes
+
+    ###################################
+    #Verificar se a coluna necessária existe no DataFrame 'icms_mono'
+    print(f"Colunas no arquivo 'ICMS Monofásico': {icms_mono.columns}")
+    print(f"Número de colunas: {len(icms_mono.columns)}")
+    if len(icms_mono.columns) <= 21:  # Certifique-se de que há pelo menos 22 colunas
+        messagebox.showerror("Erro", "A coluna 'Aliq.' não foi encontrada no arquivo ICMS Monofásico.")
+        return
+    
+    # Verificar a coluna de datas 'DATALCTOFIS'
+    print("Dados da coluna 'DATALCTOFIS':")
+    print(icms_mono['DATALCTOFIS'].head())
+
+    # Identificar valores ausentes ou inválidos na coluna de datas
+    if icms_mono['DATALCTOFIS'].isnull().any():
+        print("Aviso: Existem valores ausentes ou inválidos na coluna 'DATALCTOFIS'.")
+        print(icms_mono[icms_mono['DATALCTOFIS'].isnull()])
+
+    ###################################
 
     # Ordenar os dados
     saida_chave.sort_values(by=saida_chave.columns[1], inplace=True)  # Ordenar pela 2ª coluna (Número)
@@ -45,10 +67,37 @@ def main():
 
     # Filtrar dados pelo mês e ano
     saida_chave['Data'] = pd.to_datetime(saida_chave.iloc[:, 5], errors='coerce')  # Coluna 6 para datetime
-    icms_mono['Data'] = pd.to_datetime(icms_mono.iloc[:, 2], errors='coerce')  # Coluna 3 para datetime
+    # Ajustar a conversão da coluna 'DATALCTOFIS'
+    icms_mono['Data'] = pd.to_datetime(
+    icms_mono['DATALCTOFIS'].astype(str) + f'/{mes:02d}/{ano}',
+    format='%d/%m/%Y',
+    errors='coerce'
+)
+
+    # Verificar se há valores inválidos após a conversão
+    if icms_mono['Data'].isnull().any():
+        print("Aviso: Existem valores inválidos na conversão da coluna 'DATALCTOFIS'.")
+        print(icms_mono[icms_mono['Data'].isnull()])
+
+
 
     saida_chave = saida_chave[(saida_chave['Data'].dt.month == mes) & (saida_chave['Data'].dt.year == ano)]
     icms_mono = icms_mono[(icms_mono['Data'].dt.month == mes) & (icms_mono['Data'].dt.year == ano)]
+
+    ##############################
+    # Verificar se o DataFrame 'icms_mono' ficou vazio
+    if icms_mono.empty:
+        print("O DataFrame ICMS Monofásico está vazio após a filtragem.")
+        messagebox.showerror("Erro", "O arquivo ICMS Monofásico não contém dados para o mês e ano selecionados.")
+        return
+    
+    # Adicionar coluna 'Aliq.'
+    if len(icms_mono.columns) > 21:
+        resultado['Aliq.'] = icms_mono.iloc[:, 21].values
+    else:
+        messagebox.showerror("Erro", "A coluna 'Aliq.' não foi encontrada no arquivo ICMS Monofásico.")
+        return
+    ##############################
 
     # Montar o DataFrame final
     resultado = pd.DataFrame()
